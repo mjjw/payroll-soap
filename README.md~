@@ -1,0 +1,75 @@
+# Personnel Service
+
+A small demo/training REST API built with Spring Boot. It's one of four sibling services
+(`personnel`, `contracts`, `financial`, `tracker`) designed to sit behind an API gateway
+(the code references [Kong](https://konghq.com/products/kong-gateway)) and exercise gateway
+behaviors — slow responses, randomized HTTP status codes, request echoing, IP whitelisting —
+the kind of thing you'd want to test rate limiting, retries, circuit breakers, or client
+resiliency against.
+
+## Stack
+
+- Java 21, Spring Boot 3.2 (Spring MVC — `spring-boot-starter-web`)
+- Gradle (wrapper included, no local Gradle install needed)
+- [springdoc-openapi](https://springdoc.org/) for Swagger UI / OpenAPI docs
+- Spring Boot Actuator (health probes enabled)
+- Micrometer tracing (Brave/Zipkin bridge) — currently disabled
+- Lombok
+- Apache Commons Lang3
+
+## Running it
+
+### Locally with Gradle
+
+```bash
+./gradlew bootRun
+```
+
+The service listens on **port 9001** (see `src/main/resources/application.yml`).
+
+### As a container
+
+The `Dockerfile` expects a pre-built jar rather than building it inside the image, so build
+first, then containerize:
+
+```bash
+./gradlew build
+docker build -t personnel-service .
+docker run -p 9001:9001 personnel-service
+```
+
+### Once running
+
+- Swagger UI: http://localhost:9001/swagger-ui.html
+- OpenAPI spec (JSON): http://localhost:9001/v3/api-docs
+- Health: http://localhost:9001/actuator/health
+
+## Endpoints
+
+All under `/api/v1` unless noted.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/fast` | Responds immediately with a simple message |
+| GET | `/fast-random` | Responds immediately with a randomized HTTP status (200/400/403/415/500) |
+| GET | `/slow` | Sleeps 1–3s before responding |
+| GET | `/slow-random` | Sleeps 1–3s, then responds with a randomized HTTP status |
+| GET | `/very-slow/{param}` | Sleeps 5s; echoes back `param`, a timestamp, and a random number |
+| GET | `/who-am-i` | Returns the host's local IP address |
+| POST | `/echo` | Echoes the request body, headers, and query string back as plain text |
+| GET | `/employee` | Returns a random `Employee` (email, name, salary) from a hardcoded list of 5 |
+
+## Configuration notes
+
+- **IP whitelist filter is present but inactive.** `WhitelistIPFilter` reads an
+  `${security.whitelist-ip}` property list and, when active, rejects any request from an
+  address not on the list. Its `@Component` annotation is commented out, so it is **not**
+  registered as a filter right now.
+- The whitelist value itself lives in `src/main/resources/personnel.yml` — but note this file
+  isn't referenced anywhere (no `spring.config.import`), so Spring Boot won't load it
+  automatically. Even with the filter re-enabled, you'd need to import this file explicitly
+  or fold its contents into `application.yml`.
+- `RestConfig` exposes a `RestTemplate` bean (10s connect/read timeout) for use elsewhere in
+  the app, though nothing currently calls out to other services from this one.
+- Tracing (Zipkin/Brave) dependencies are present but `management.tracing.enabled: false`
+  in `application.yml`.
